@@ -22,7 +22,6 @@ class Cache(ABC):
     def delete(self, id):
         pass
 
-
 class MemoryCache(Cache):
     def __init__(self):
         self.cache = {}
@@ -33,16 +32,13 @@ class MemoryCache(Cache):
     def set(self, id, field, value):
         if id not in self.cache:
             self.cache[id] = {}
-
         self.cache[id][field] = value
 
     def get(self, id, field):
         if id not in self.cache:
             return None
-
         if field not in self.cache[id]:
             return None
-
         return self.cache[id][field]
 
     def get_all(self, field_list) -> list:

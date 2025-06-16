@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Chat - Flask App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chat-message { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .loading-dots::after {
+            content: '';
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { color: rgba(0,0,0,0); text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+            40% { color: black; text-shadow: .25em 0 0 rgba(0,0,0,0), .5em 0 0 rgba(0,0,0,0); }
+            60% { text-shadow: .25em 0 0 black, .5em 0 0 rgba(0,0,0,0); }
+            80%, 100% { text-shadow: .25em 0 0 black, .5em 0 0 black; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-gray-900">Database Chat</h1>
+                    <span class="ml-3 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">Flask Demo</span>
+                </div>
+                <button id="historyBtn" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    History
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- Sidebar -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Sample Questions</h2>
+                    <div id="sampleQuestions" class="space-y-2">
+                        <!-- Questions will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Chat Area -->
+            <div class="lg:col-span-3">
+                <div class="bg-white rounded-lg shadow-sm">
+                    <!-- Chat Messages -->
+                    <div id="chatMessages" class="h-96 overflow-y-auto p-6 space-y-4">
+                        <div class="text-center text-gray-500 py-8">
+                            <div class="text-4xl mb-4">💬</div>
+                            <p class="text-lg font-medium">Welcome to Database Chat!</p>
+                            <p class="text-sm">Ask questions about your data in natural language.</p>
+                        </div>
+                    </div>
+
+                    <!-- Input Area -->
+                    <div class="border-t p-4">
+                        <div class="flex space-x-4">
+                            <input 
+                                type="text" 
+                                id="questionInput" 
+                                placeholder="Ask a question about your data..."
+                                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                            <button 
+                                id="sendBtn" 
+                                class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Send
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div id="historyModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-lg max-w-md w-full p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold">Question History</h3>
+                    <button id="closeHistoryBtn" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div id="historyList" class="space-y-2 max-h-64 overflow-y-auto">
+                    <!-- History items will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class DatabaseChat {
+            constructor() {
+                this.chatMessages = document.getElementById('chatMessages');
+                this.questionInput = document.getElementById('questionInput');
+                this.sendBtn = document.getElementById('sendBtn');
+                this.sampleQuestions = document.getElementById('sampleQuestions');
+                this.historyBtn = document.getElementById('historyBtn');
+                this.historyModal = document.getElementById('historyModal');
+                this.closeHistoryBtn = document.getElementById('closeHistoryBtn');
+                this.historyList = document.getElementById('historyList');
+                
+                this.init();
+            }
+
+            init() {
+                this.loadSampleQuestions();
+                this.bindEvents();
+            }
+
+            bindEvents() {
+                this.sendBtn.addEventListener('click', () => this.sendQuestion());
+                this.questionInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.sendQuestion();
+                });
+                this.historyBtn.addEventListener('click', () => this.showHistory());
+                this.closeHistoryBtn.addEventListener('click', () => this.hideHistory());
+                this.historyModal.addEventListener('click', (e) => {
+                    if (e.target === this.historyModal) this.hideHistory();
+                });
+            }
+
+            async loadSampleQuestions() {
+                try {
+                    const response = await fetch('/api/v0/generate_questions');
+                    const data = await response.json();
+                    
+                    this.sampleQuestions.innerHTML = '';
+                    data.questions.forEach(question => {
+                        const btn = document.createElement('button');
+                        btn.className = 'w-full text-left p-3 text-sm text-gray-700 hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors';
+                        btn.textContent = question;
+                        btn.addEventListener('click', () => {
+                            this.questionInput.value = question;
+                            this.sendQuestion();
+                        });
+                        this.sampleQuestions.appendChild(btn);
+                    });
+                } catch (error) {
+                    console.error('Error loading sample questions:', error);
+                }
+            }
+
+            async sendQuestion() {
+                const question = this.questionInput.value.trim();
+                if (!question) return;
+
+                this.questionInput.value = '';
+                this.sendBtn.disabled = true;
+                
+                // Add user message
+                this.addMessage('user', question);
+                
+                // Add loading message
+                const loadingId = this.addMessage('assistant', 'Analyzing your question...', true);
+
+                try {
+                    // Generate SQL
+                    const sqlResponse = await fetch(`/api/v0/generate_sql?question=${encodeURIComponent(question)}`);
+                    const sqlData = await sqlResponse.json();
+                    
+                    if (sqlData.type === 'error') {
+                        this.updateMessage(loadingId, `Error: ${sqlData.error}`);
+                        return;
+                    }
+
+                    this.updateMessage(loadingId, `Generated SQL:\n\`\`\`sql\n${sqlData.text}\n\`\`\``);
+
+                    // Execute SQL
+                    const runResponse = await fetch(`/api/v0/run_sql?id=${sqlData.id}`);
+                    const runData = await runResponse.json();
+                    
+                    if (runData.type === 'error') {
+                        this.addMessage('assistant', `Error executing query: ${runData.error}`);
+                        return;
+                    }
+
+                    // Display results
+                    const results = JSON.parse(runData.df);
+                    this.addDataTable(results);
+
+                    // Generate visualization
+                    const vizResponse = await fetch(`/api/v0/generate_plotly_figure?id=${sqlData.id}`);
+                    const vizData = await vizResponse.json();
+                    
+                    if (vizData.type === 'plotly_figure') {
+                        this.addVisualization(vizData.fig);
+                    }
+
+                    // Add download button
+                    this.addDownloadButton(sqlData.id);
+
+                } catch (error) {
+                    this.updateMessage(loadingId, `Error: ${error.message}`);
+                } finally {
+                    this.sendBtn.disabled = false;
+                }
+            }
+
+            addMessage(sender, content, isLoading = false) {
+                const messageId = 'msg-' + Date.now();
+                const messageDiv = document.createElement('div');
+                messageDiv.id = messageId;
+                messageDiv.className = `chat-message flex ${sender === 'user' ? 'justify-end' : 'justify-start'}`;
+                
+                const bubble = document.createElement('div');
+                bubble.className = `max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                    sender === 'user' 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-gray-100 text-gray-900'
+                } ${isLoading ? 'loading-dots' : ''}`;
+                
+                if (content.includes('```sql')) {
+                    bubble.innerHTML = this.formatCodeBlock(content);
+                } else {
+                    bubble.textContent = content;
+                }
+                
+                messageDiv.appendChild(bubble);
+                this.chatMessages.appendChild(messageDiv);
+                this.scrollToBottom();
+                
+                return messageId;
+            }
+
+            updateMessage(messageId, content) {
+                const messageEl = document.getElementById(messageId);
+                if (messageEl) {
+                    const bubble = messageEl.querySelector('div');
+                    bubble.className = bubble.className.replace('loading-dots', '');
+                    
+                    if (content.includes('```sql')) {
+                        bubble.innerHTML = this.formatCodeBlock(content);
+                    } else {
+                        bubble.textContent = content;
+                    }
+                }
+            }
+
+            formatCodeBlock(content) {
+                return content.replace(/```sql\n([\s\S]*?)\n```/g, 
+                    '<pre class="bg-gray-800 text-green-400 p-3 rounded mt-2 text-sm overflow-x-auto"><code>$1</code></pre>'
+                );
+            }
+
+            addDataTable(data) {
+                if (!data || data.length === 0) return;
+
+                const tableDiv = document.createElement('div');
+                tableDiv.className = 'chat-message flex justify-start';
+                
+                const tableContainer = document.createElement('div');
+                tableContainer.className = 'max-w-full bg-white border rounded-lg overflow-hidden';
+                
+                const table = document.createElement('table');
+                table.className = 'min-w-full divide-y divide-gray-200';
+                
+                // Header
+                const thead = document.createElement('thead');
+                thead.className = 'bg-gray-50';
+                const headerRow = document.createElement('tr');
+                
+                Object.keys(data[0]).forEach(key => {
+                    const th = document.createElement('th');
+                    th.className = 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
+                    th.textContent = key;
+                    headerRow.appendChild(th);
+                });
+                
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                // Body
+                const tbody = document.createElement('tbody');
+                tbody.className = 'bg-white divide-y divide-gray-200';
+                
+                data.slice(0, 10).forEach(row => {
+                    const tr = document.createElement('tr');
+                    Object.values(row).forEach(value => {
+                        const td = document.createElement('td');
+                        td.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-900';
+                        td.textContent = value;
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+                
+                table.appendChild(tbody);
+                tableContainer.appendChild(table);
+                tableDiv.appendChild(tableContainer);
+                this.chatMessages.appendChild(tableDiv);
+                this.scrollToBottom();
+            }
+
+            addVisualization(figJson) {
+                const vizDiv = document.createElement('div');
+                vizDiv.className = 'chat-message flex justify-start';
+                
+                const plotContainer = document.createElement('div');
+                plotContainer.className = 'max-w-full bg-white rounded-lg p-4';
+                plotContainer.style.width = '600px';
+                plotContainer.style.height = '400px';
+                
+                const plotDiv = document.createElement('div');
+                plotDiv.style.width = '100%';
+                plotDiv.style.height = '100%';
+                
+                plotContainer.appendChild(plotDiv);
+                vizDiv.appendChild(plotContainer);
+                this.chatMessages.appendChild(vizDiv);
+                
+                // Render Plotly chart
+                const fig = JSON.parse(figJson);
+                Plotly.newPlot(plotDiv, fig.data, fig.layout, {responsive: true});
+                
+                this.scrollToBottom();
+            }
+
+            addDownloadButton(queryId) {
+                const btnDiv = document.createElement('div');
+                btnDiv.className = 'chat-message flex justify-start';
+                
+                const downloadBtn = document.createElement('a');
+                downloadBtn.href = `/api/v0/download_csv?id=${queryId}`;
+                downloadBtn.className = 'inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors';
+                downloadBtn.innerHTML = `
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    Download CSV
+                `;
+                
+                btnDiv.appendChild(downloadBtn);
+                this.chatMessages.appendChild(btnDiv);
+                this.scrollToBottom();
+            }
+
+            async showHistory() {
+                try {
+                    const response = await fetch('/api/v0/get_question_history');
+                    const data = await response.json();
+                    
+                    this.historyList.innerHTML = '';
+                    
+                    if (data.questions.length === 0) {
+                        this.historyList.innerHTML = '<p class="text-gray-500 text-center py-4">No questions asked yet</p>';
+                    } else {
+                        data.questions.forEach(item => {
+                            const btn = document.createElement('button');
+                            btn.className = 'w-full text-left p-3 text-sm text-gray-700 hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors';
+                            btn.textContent = item.question;
+                            btn.addEventListener('click', () => {
+                                this.questionInput.value = item.question;
+                                this.hideHistory();
+                            });
+                            this.historyList.appendChild(btn);
+                        });
+                    }
+                    
+                    this.historyModal.classList.remove('hidden');
+                } catch (error) {
+                    console.error('Error loading history:', error);
+                }
+            }
+
+            hideHistory() {
+                this.historyModal.classList.add('hidden');
+            }
+
+            scrollToBottom() {
+                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            }
+        }
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', () => {
+            new DatabaseChat();
+        });
+    </script>
+</body>
+</html>
